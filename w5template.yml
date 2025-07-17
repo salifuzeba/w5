@@ -56,7 +56,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: 10.0.2.0/24
+      CidrBlock: 10.0.3.0/24
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -67,7 +67,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [2, !GetAZs '']
-      CidrBlock: 10.0.3.0/24
+      CidrBlock: 10.0.6.0/24
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -79,7 +79,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: 10.0.11.0/24
+      CidrBlock: 10.0.9.0/24
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-private-subnet-1'
@@ -89,7 +89,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: 10.0.12.0/24
+      CidrBlock: 10.0.11.0/24
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-private-subnet-2'
@@ -334,4 +334,4 @@ Outputs:
     Value: !Ref S3Bucket
     Export:
       Name: !Sub '${ProjectName}-${Environment}-s3-bucket-name'
-
+      
