@@ -1,21 +1,20 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Master Stack to deploy infrastructure for blue/green deployment
+Description: 'Secure VPC infrastructure for containerized web application with high availability'
 
 Parameters:
   ProjectName:
     Type: String
-    Default: w5project
-
-  ImageTag:
+    Default: 'image-manager'
+    Description: 'Name of the project for resource naming'
+  
+  Environment:
     Type: String
-    Default: latest
-
-
+    Default: 'production'
+    AllowedValues: ['development', 'staging', 'production']
+    Description: 'Environment name'
 
 Resources:
-
-################################ VPC Stack ##########################################
-
+  # VPC
   VPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -24,14 +23,15 @@ Resources:
       EnableDnsSupport: true
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-vpc'
+          Value: !Sub '${ProjectName}-${Environment}-vpc'
 
+  # Internet Gateway
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-igw'
+          Value: !Sub '${ProjectName}-${Environment}-igw'
 
   InternetGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -39,7 +39,7 @@ Resources:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref VPC
 
-
+  # Public Subnets
   PublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
@@ -49,7 +49,7 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-public-subnet-az1'
+          Value: !Sub '${ProjectName}-${Environment}-public-subnet-1'
 
   PublicSubnet2:
     Type: AWS::EC2::Subnet
@@ -60,73 +60,95 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-public-subnet-az2'
+          Value: !Sub '${ProjectName}-${Environment}-public-subnet-2'
 
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !GetAZs '']
+      CidrBlock: 10.0.3.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-public-subnet-3'
+
+  # Private Subnets
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: 10.0.10.0/24
+      CidrBlock: 10.0.11.0/24
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-private-subnet-az1'
+          Value: !Sub '${ProjectName}-${Environment}-private-subnet-1'
 
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: 10.0.11.0/24
+      CidrBlock: 10.0.12.0/24
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-private-subnet-az2'
+          Value: !Sub '${ProjectName}-${Environment}-private-subnet-2'
 
+  PrivateSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !GetAZs '']
+      CidrBlock: 10.0.13.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-private-subnet-3'
 
+  # NAT Gateways
   NatGateway1EIP:
     Type: AWS::EC2::EIP
     DependsOn: InternetGatewayAttachment
     Properties:
       Domain: vpc
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-nat-eip-1'
 
   NatGateway2EIP:
     Type: AWS::EC2::EIP
     DependsOn: InternetGatewayAttachment
     Properties:
       Domain: vpc
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-nat-eip-2'
+
+  NatGateway3EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
 
   NatGateway1:
     Type: AWS::EC2::NatGateway
     Properties:
       AllocationId: !GetAtt NatGateway1EIP.AllocationId
       SubnetId: !Ref PublicSubnet1
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-nat-1'
 
   NatGateway2:
     Type: AWS::EC2::NatGateway
     Properties:
       AllocationId: !GetAtt NatGateway2EIP.AllocationId
       SubnetId: !Ref PublicSubnet2
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-nat-2'
 
+  NatGateway3:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway3EIP.AllocationId
+      SubnetId: !Ref PublicSubnet3
 
+  # Route Tables
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-public-routes'
+          Value: !Sub '${ProjectName}-${Environment}-public-rt'
 
   DefaultPublicRoute:
     Type: AWS::EC2::Route
@@ -148,13 +170,20 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnet2
 
+  PublicSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet3
+
+  # Private Route Tables
   PrivateRouteTable1:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-private-routes-az1'
+          Value: !Sub '${ProjectName}-${Environment}-private-rt-1'
 
   DefaultPrivateRoute1:
     Type: AWS::EC2::Route
@@ -175,7 +204,7 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-private-routes-az2'
+          Value: !Sub '${ProjectName}-${Environment}-private-rt-2'
 
   DefaultPrivateRoute2:
     Type: AWS::EC2::Route
@@ -190,13 +219,33 @@ Resources:
       RouteTableId: !Ref PrivateRouteTable2
       SubnetId: !Ref PrivateSubnet2
 
+  PrivateRouteTable3:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-private-rt-3'
 
+  DefaultPrivateRoute3:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable3
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway3
 
+  PrivateSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable3
+      SubnetId: !Ref PrivateSubnet3
+
+  # Security Groups
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub '${ProjectName}-alb-sg'
-      GroupDescription: Security group for ALB
+      GroupName: !Sub '${ProjectName}-${Environment}-alb-sg'
+      GroupDescription: 'Security group for Application Load Balancer'
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -207,38 +256,82 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-alb-sg'
+          Value: !Sub '${ProjectName}-${Environment}-alb-sg'
 
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub '${ProjectName}-ecs-sg'
-      GroupDescription: Security group for ECS tasks
+      GroupName: !Sub '${ProjectName}-${Environment}-ecs-sg'
+      GroupDescription: 'Security group for ECS tasks'
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 2020
-          ToPort: 2020
+          FromPort: 80
+          ToPort: 80
           SourceSecurityGroupId: !Ref ALBSecurityGroup
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-ecs-sg'
+          Value: !Sub '${ProjectName}-${Environment}-ecs-sg'
 
-
-  S3VPCEndpoint:
-    Type: AWS::EC2::VPCEndpoint
+  # S3 Bucket for images
+  S3Bucket:
+    Type: AWS::S3::Bucket
     Properties:
-      VpcId: !Ref VPC
-      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
-      VpcEndpointType: Gateway
-      RouteTableIds:
-        - !Ref PrivateRouteTable1
-        - !Ref PrivateRouteTable2
+      BucketName: !Sub '${ProjectName}-${Environment}-images-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+
+# Outputs
+Outputs:
+  VPCId:
+    Description: 'VPC ID'
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-vpc-id'
+
+  PublicSubnets:
+    Description: 'Public subnet IDs'
+    Value: !Join [',', [!Ref PublicSubnet1, !Ref PublicSubnet2, !Ref PublicSubnet3]]
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-public-subnets'
+
+  PrivateSubnets:
+    Description: 'Private subnet IDs'
+    Value: !Join [',', [!Ref PrivateSubnet1, !Ref PrivateSubnet2, !Ref PrivateSubnet3]]
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-private-subnets'
+
+  ALBSecurityGroupId:
+    Description: 'ALB Security Group ID'
+    Value: !Ref ALBSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-alb-sg-id'
+
+  ECSSecurityGroupId:
+    Description: 'ECS Security Group ID'
+    Value: !Ref ECSSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ecs-sg-id'
+
+  S3BucketName:
+    Description: 'S3 Bucket Name'
+    Value: !Ref S3Bucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-s3-bucket-name'
+
