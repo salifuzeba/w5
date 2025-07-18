@@ -1,25 +1,21 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Secure VPC infrastructure for containerized web application with high availability'
+Description: Master Stack to deploy infrastructure for blue/green deployment
 
 Parameters:
   ProjectName:
     Type: String
-    Default: 'image-manager'
-    Description: 'Name of the project for resource naming'
-  
-  Environment:
-    Type: String
-    Default: 'production'
-    AllowedValues: ['development', 'staging', 'production']
-    Description: 'Environment name'
+    Default: w5project
 
-  ImageURI:
+  ImageTag:
     Type: String
-    Description: 'ECR image URI'
-    Default: 'nginx:latest'
+    Default: latest
+
+
 
 Resources:
-  # VPC
+
+################################ VPC Stack ##########################################
+
   VPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -28,15 +24,14 @@ Resources:
       EnableDnsSupport: true
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-vpc'
+          Value: !Sub '${ProjectName}-vpc'
 
-  # Internet Gateway
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-igw'
+          Value: !Sub '${ProjectName}-igw'
 
   InternetGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -44,7 +39,7 @@ Resources:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref VPC
 
-  # Public Subnets
+
   PublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
@@ -54,40 +49,28 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-public-subnet-1'
+          Value: !Sub '${ProjectName}-public-subnet-az1'
 
   PublicSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: 10.0.3.0/24
+      CidrBlock: 10.0.2.0/24
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-public-subnet-2'
+          Value: !Sub '${ProjectName}-public-subnet-az2'
 
-  PublicSubnet3:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [2, !GetAZs '']
-      CidrBlock: 10.0.6.0/24
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-public-subnet-3'
-
-  # Private Subnets
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: 10.0.9.0/24
+      CidrBlock: 10.0.10.0/24
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-private-subnet-1'
+          Value: !Sub '${ProjectName}-private-subnet-az1'
 
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
@@ -97,63 +80,53 @@ Resources:
       CidrBlock: 10.0.11.0/24
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-private-subnet-2'
+          Value: !Sub '${ProjectName}-private-subnet-az2'
 
-  PrivateSubnet3:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [2, !GetAZs '']
-      CidrBlock: 10.0.13.0/24
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-private-subnet-3'
 
-  # NAT Gateways
   NatGateway1EIP:
     Type: AWS::EC2::EIP
     DependsOn: InternetGatewayAttachment
     Properties:
       Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-nat-eip-1'
 
   NatGateway2EIP:
     Type: AWS::EC2::EIP
     DependsOn: InternetGatewayAttachment
     Properties:
       Domain: vpc
-
-  NatGateway3EIP:
-    Type: AWS::EC2::EIP
-    DependsOn: InternetGatewayAttachment
-    Properties:
-      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-nat-eip-2'
 
   NatGateway1:
     Type: AWS::EC2::NatGateway
     Properties:
       AllocationId: !GetAtt NatGateway1EIP.AllocationId
       SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-nat-1'
 
   NatGateway2:
     Type: AWS::EC2::NatGateway
     Properties:
       AllocationId: !GetAtt NatGateway2EIP.AllocationId
       SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-nat-2'
 
-  NatGateway3:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt NatGateway3EIP.AllocationId
-      SubnetId: !Ref PublicSubnet3
 
-  # Route Tables
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-public-rt'
+          Value: !Sub '${ProjectName}-public-routes'
 
   DefaultPublicRoute:
     Type: AWS::EC2::Route
@@ -175,20 +148,13 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnet2
 
-  PublicSubnet3RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnet3
-
-  # Private Route Tables
   PrivateRouteTable1:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-private-rt-1'
+          Value: !Sub '${ProjectName}-private-routes-az1'
 
   DefaultPrivateRoute1:
     Type: AWS::EC2::Route
@@ -209,7 +175,7 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-private-rt-2'
+          Value: !Sub '${ProjectName}-private-routes-az2'
 
   DefaultPrivateRoute2:
     Type: AWS::EC2::Route
@@ -224,33 +190,13 @@ Resources:
       RouteTableId: !Ref PrivateRouteTable2
       SubnetId: !Ref PrivateSubnet2
 
-  PrivateRouteTable3:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-private-rt-3'
 
-  DefaultPrivateRoute3:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable3
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway3
 
-  PrivateSubnet3RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable3
-      SubnetId: !Ref PrivateSubnet3
-
-  # Security Groups
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub '${ProjectName}-${Environment}-alb-sg'
-      GroupDescription: 'Security group for Application Load Balancer'
+      GroupName: !Sub '${ProjectName}-alb-sg'
+      GroupDescription: Security group for ALB
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -261,363 +207,40 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-alb-sg'
+          Value: !Sub '${ProjectName}-alb-sg'
 
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub '${ProjectName}-${Environment}-ecs-sg'
-      GroupDescription: 'Security group for ECS tasks'
+      GroupName: !Sub '${ProjectName}-ecs-sg'
+      GroupDescription: Security group for ECS tasks
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
+          # FromPort: 2020
+          # ToPort: 2020
           SourceSecurityGroupId: !Ref ALBSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-ecs-sg'
+          Value: !Sub '${ProjectName}-ecs-sg'
 
-  # S3 Bucket for images
-  S3Bucket:
-    Type: AWS::S3::Bucket
+
+  S3VPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
     Properties:
-      BucketName: !Sub '${ProjectName}-${Environment}-images-${AWS::AccountId}'
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      VersioningConfiguration:
-        Status: Enabled
-      LifecycleConfiguration:
-        Rules:
-          - Id: DeleteOldVersions
-            Status: Enabled
-            NoncurrentVersionExpirationInDays: 30
-
-  
-  ECRRepository:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: !Sub '${ProjectName}-${Environment}'
-      ImageScanningConfiguration:
-        ScanOnPush: true
-      EncryptionConfiguration:
-        EncryptionType: AES256
-      LifecyclePolicy:
-        LifecyclePolicyText: |
-          {
-            "rules": [
-              {
-                "rulePriority": 1,
-                "description": "Keep last 10 images",
-                "selection": {
-                  "tagStatus": "any",
-                  "countType": "imageCountMoreThan",
-                  "countNumber": 10
-                },
-                "action": {
-                  "type": "expire"
-                }
-              }
-            ]
-          }
-
-  # ECS Cluster
-  ECSCluster:
-    Type: AWS::ECS::Cluster
-    Properties:
-      ClusterName: !Sub '${ProjectName}-${Environment}-cluster'
-      CapacityProviders:
-        - FARGATE
-        - FARGATE_SPOT
-      DefaultCapacityProviderStrategy:
-        - CapacityProvider: FARGATE
-          Weight: 1
-        - CapacityProvider: FARGATE_SPOT
-          Weight: 4
-
-  # Application Load Balancer
-  ApplicationLoadBalancer:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Name: !Sub '${ProjectName}-${Environment}-alb'
-      Scheme: internet-facing
-      Type: application
-      SecurityGroups:
-        - Fn::ImportValue: !Sub '${ProjectName}-${Environment}-alb-sg-id'
-      Subnets:
-        - Fn::Select: [0, Fn::Split: [',', Fn::ImportValue: !Sub '${ProjectName}-${Environment}-public-subnets']]
-        - Fn::Select: [1, Fn::Split: [',', Fn::ImportValue: !Sub '${ProjectName}-${Environment}-public-subnets']]
-        - Fn::Select: [2, Fn::Split: [',', Fn::ImportValue: !Sub '${ProjectName}-${Environment}-public-subnets']]
-
-  # Target Group
-  TargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      Name: !Sub '${ProjectName}-${Environment}-tg'
-      Port: 80
-      Protocol: HTTP
-      VpcId:
-        Fn::ImportValue: !Sub '${ProjectName}-${Environment}-vpc-id'
-      TargetType: ip
-      HealthCheckEnabled: true
-      HealthCheckIntervalSeconds: 30
-      HealthCheckPath: /health
-      HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 3
-
-  # ALB Listener
-  ALBListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref TargetGroup
-      LoadBalancerArn: !Ref ApplicationLoadBalancer
-      Port: 80
-      Protocol: HTTP
-
-  # ECS Task Definition
-  TaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: !Sub '${ProjectName}-${Environment}-task'
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: 256
-      Memory: 512
-      ExecutionRoleArn: !Ref ECSTaskExecutionRole
-      TaskRoleArn: !Ref ECSTaskRole
-      ContainerDefinitions:
-        - Name: !Sub '${ProjectName}-container'
-          Image: !Ref ImageURI
-          PortMappings:
-            - ContainerPort: 80
-              Protocol: tcp
-          Essential: true
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Ref CloudWatchLogGroup
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: ecs
-          Environment:
-            - Name: NODE_ENV
-              Value: production
-            - Name: AWS_REGION
-              Value: !Ref AWS::Region
-            - Name: S3_BUCKET_NAME
-              Value:
-                Fn::ImportValue: !Sub '${ProjectName}-${Environment}-s3-bucket-name'
-
-  # ECS Service
-  ECSService:
-    Type: AWS::ECS::Service
-    DependsOn: ALBListener
-    Properties:
-      ServiceName: !Sub '${ProjectName}-${Environment}-service'
-      Cluster: !Ref ECSCluster
-      TaskDefinition: !Ref TaskDefinition
-      DesiredCount: 2
-      LaunchType: FARGATE
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
-          SecurityGroups:
-            - Fn::ImportValue: !Sub '${ProjectName}-${Environment}-ecs-sg-id'
-          Subnets:
-            - Fn::Select: [0, Fn::Split: [',', Fn::ImportValue: !Sub '${ProjectName}-${Environment}-private-subnets']]
-            - Fn::Select: [1, Fn::Split: [',', Fn::ImportValue: !Sub '${ProjectName}-${Environment}-private-subnets']]
-            - Fn::Select: [2, Fn::Split: [',', Fn::ImportValue: !Sub '${ProjectName}-${Environment}-private-subnets']]
-      LoadBalancers:
-        - ContainerName: !Sub '${ProjectName}-container'
-          ContainerPort: 80
-          TargetGroupArn: !Ref TargetGroup
-      DeploymentConfiguration:
-        MaximumPercent: 200
-        MinimumHealthyPercent: 100
-        DeploymentCircuitBreaker:
-          Enable: true
-          Rollback: true
-
-  # Auto Scaling Target
-  AutoScalingTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Properties:
-      MaxCapacity: 10
-      MinCapacity: 2
-      ResourceId: !Sub 'service/${ECSCluster}/${ECSService.Name}'
-      RoleARN: !GetAtt AutoScalingRole.Arn
-      ScalableDimension: ecs:service:DesiredCount
-      ServiceNamespace: ecs
-
-  # Auto Scaling Policy
-  AutoScalingPolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Sub '${ProjectName}-${Environment}-scaling-policy'
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref AutoScalingTarget
-      TargetTrackingScalingPolicyConfiguration:
-        PredefinedMetricSpecification:
-          PredefinedMetricType: ECSServiceAverageCPUUtilization
-        TargetValue: 50.0
-        ScaleOutCooldown: 300
-        ScaleInCooldown: 300
-
-  # CloudWatch Log Group
-  CloudWatchLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/ecs/${ProjectName}-${Environment}'
-      RetentionInDays: 30
-
-  # IAM Roles
-  ECSTaskExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-      Policies:
-        - PolicyName: CloudWatchLogs
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: !GetAtt CloudWatchLogGroup.Arn
-
-  ECSTaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: S3Access
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:DeleteObject
-                  - s3:ListBucket
-                Resource:
-                  - !Sub
-                    - '${BucketArn}/*'
-                    - BucketArn:
-                        Fn::Sub:
-                          - 'arn:aws:s3:::${BucketName}'
-                          - BucketName:
-                              Fn::ImportValue: !Sub '${ProjectName}-${Environment}-s3-bucket-name'
-                  - Fn::Sub:
-                      - 'arn:aws:s3:::${BucketName}'
-                      - BucketName:
-                          Fn::ImportValue: !Sub '${ProjectName}-${Environment}-s3-bucket-name'
-
-  AutoScalingRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: application-autoscaling.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole
-
-
-
-
-
-
-# Outputs
-Outputs:
-  VPCId:
-    Description: 'VPC ID'
-    Value: !Ref VPC
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-vpc-id'
-
-  PublicSubnets:
-    Description: 'Public subnet IDs'
-    Value: !Join [',', [!Ref PublicSubnet1, !Ref PublicSubnet2, !Ref PublicSubnet3]]
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-public-subnets'
-
-  PrivateSubnets:
-    Description: 'Private subnet IDs'
-    Value: !Join [',', [!Ref PrivateSubnet1, !Ref PrivateSubnet2, !Ref PrivateSubnet3]]
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-private-subnets'
-
-  ALBSecurityGroupId:
-    Description: 'ALB Security Group ID'
-    Value: !Ref ALBSecurityGroup
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-alb-sg-id'
-
-  ECSSecurityGroupId:
-    Description: 'ECS Security Group ID'
-    Value: !Ref ECSSecurityGroup
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-ecs-sg-id'
-
-  S3BucketName:
-    Description: 'S3 Bucket Name'
-    Value: !Ref S3Bucket
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-s3-bucket-name'
-
-  LoadBalancerDNS:
-    Description: 'Application Load Balancer DNS'
-    Value: !GetAtt ApplicationLoadBalancer.DNSName
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-alb-dns'
-
-  ECRRepositoryURI:
-    Description: 'ECR Repository URI'
-    Value: !GetAtt ECRRepository.RepositoryUri
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-ecr-uri'
-
-  ECSClusterName:
-    Description: 'ECS Cluster Name'
-    Value: !Ref ECSCluster
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-cluster-name'
-
-  ECSServiceName:
-    Description: 'ECS Service Name'
-    Value: !GetAtt ECSService.Name
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-service-name'
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable1
+        - !Ref PrivateRouteTable2
